@@ -1,0 +1,9 @@
+.wrangler/
+.dev.vars
+node_modules/
+dist/
+*.log
+.DS_Store
+
+apps/**/package-lock.json
+apps/worker/site/**
