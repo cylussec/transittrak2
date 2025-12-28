@@ -9,7 +9,17 @@
     "dev:worker": "npm run build:web && npm run -w transittrack-worker dev",
     "build:web": "npm run -w web build",
     "build": "npm run build:web",
+    "lint:web": "npm run -w web lint",
+    "lint": "npm run lint:web",
     "test:worker": "npm run -w transittrack-worker test",
-    "deploy": "npm run build && npm run -w transittrack-worker deploy"
+    "test": "npm run test:worker",
+    "ci": "npm run lint && npm run test && npm run build",
+    "setup:hooks": "git config core.hooksPath .githooks",
+    "deploy": "npm run build && npm run -w transittrack-worker db:migrate && npm run -w transittrack-worker deploy",
+    "deploy:staging": "npm run build && npm run -w transittrack-worker db:migrate:staging && npm run -w transittrack-worker deploy -- --env staging",
+    "deploy:prod": "npm run deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.56.0"
   }
 }

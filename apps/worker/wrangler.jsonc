@@ -3,7 +3,7 @@
  * https://developers.cloudflare.com/workers/wrangler/configuration/
  */
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
+	"$schema": "../../node_modules/wrangler/config-schema.json",
 	"name": "transittrack-worker",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-09-06",
@@ -16,7 +16,82 @@
 	},
 	"observability": {
 		"enabled": true
-	}
+	},
+	"env": {
+		"staging": {
+			"name": "transittrack-worker-staging",
+			"vars": {
+				"ENVIRONMENT": "staging",
+				"SWIFTLY_API_KEY": "test"
+			},
+			"durable_objects": {
+				"bindings": [
+					{
+						"name": "INGEST_COORDINATOR",
+						"class_name": "IngestCoordinator"
+					}
+				]
+			},
+			"migrations": [
+				{
+					"tag": "v1",
+					"new_classes": [
+						"IngestCoordinator"
+					]
+				}
+			],
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "transittrack-staging",
+					"database_id": "79dad050-34f7-4e2e-aec9-d65e07d6972c",
+					"migrations_dir": "migrations",
+					"migrations_table": "d1_migrations"
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "ARCHIVE_BUCKET",
+					"bucket_name": "transittrack-archive-staging"
+				}
+			]
+		}
+	},
+	"vars": {
+		"ENVIRONMENT": "production",
+		"SWIFTLY_API_KEY": "test"
+	},
+	"r2_buckets": [
+		{
+			"binding": "ARCHIVE_BUCKET",
+			"bucket_name": "transittrack-archive"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "INGEST_COORDINATOR",
+				"class_name": "IngestCoordinator"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_classes": [
+				"IngestCoordinator"
+			]
+		}
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "transittrack",
+			"database_id": "ae15e133-c80f-41b9-a9d8-06a2abe1bc38",
+			"migrations_dir": "migrations",
+			"migrations_table": "d1_migrations"
+		}
+	]
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
