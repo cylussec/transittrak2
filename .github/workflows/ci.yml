@@ -25,10 +25,16 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Install Rollup native binary (Linux workaround)
+      - name: Install Rollup native binary for worker (Linux workaround)
+        working-directory: apps/worker
         run: npm install --no-save @rollup/rollup-linux-x64-gnu@4.54.0
 
-      - name: Install Rolldown native binary (Linux workaround)
+      - name: Install Rollup native binary for web (Linux workaround)
+        working-directory: apps/web
+        run: npm install --no-save @rollup/rollup-linux-x64-gnu@4.54.0
+
+      - name: Install Rolldown native binary for web (Linux workaround)
+        working-directory: apps/web
         run: npm install --no-save @rolldown/binding-linux-x64-gnu@1.0.0-beta.50
 
       - name: DB Migrations Check
