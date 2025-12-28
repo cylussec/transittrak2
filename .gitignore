@@ -7,3 +7,4 @@ dist/
 
 apps/**/package-lock.json
 apps/worker/site/**
+!apps/worker/site/.gitkeep
