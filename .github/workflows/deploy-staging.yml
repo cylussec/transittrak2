@@ -24,8 +24,14 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      - name: Use npm 11.7.0 (workaround rollup optional dep bug)
+        run: corepack use npm@11.7.0
+
       - name: Install
         run: npm ci
+
+      - name: Install Rollup native binary (Linux workaround)
+        run: npm install --no-save @rollup/rollup-linux-x64-gnu@4.54.0
 
       - name: Lint + Test + Build
         run: npm run ci
