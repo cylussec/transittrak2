@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -28,7 +28,7 @@ async function rmWithRetry(targetPath: string): Promise<boolean> {
   return true
 }
 
-function cleanOutDirWithRetry() {
+function cleanOutDirWithRetry(): Plugin {
   return {
     name: 'clean-out-dir-with-retry',
     apply: 'build',
@@ -38,7 +38,7 @@ function cleanOutDirWithRetry() {
   }
 }
 
-function cleanViteCacheWithRetry() {
+function cleanViteCacheWithRetry(): Plugin {
   return {
     name: 'clean-vite-cache-with-retry',
     apply: 'serve',
