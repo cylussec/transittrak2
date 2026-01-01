@@ -1,0 +1,58 @@
+name: Deploy (Staging)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Use npm 11.7.0 (workaround rollup optional dep bug)
+        run: corepack use npm@11.7.0
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Rollup native binary for worker (Linux workaround)
+        working-directory: apps/worker
+        run: npm install --no-save @rollup/rollup-linux-x64-gnu@$(node -p "require('rollup/package.json').version")
+
+      - name: Install Rollup native binary for web (Linux workaround)
+        working-directory: apps/web
+        run: npm install --no-save @rollup/rollup-linux-x64-gnu@$(node -p "require('rollup/package.json').version")
+
+      - name: Lint + Test + Build
+        run: npm run ci
+
+      - name: Apply D1 migrations (staging)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/worker
+          command: d1 migrations apply transittrack-staging --remote --env staging
+
+      - name: Deploy Worker (staging)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/worker
+          command: deploy --env staging

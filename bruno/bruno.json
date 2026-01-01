@@ -1,0 +1,23 @@
+{
+  "name": "TransitTrack Worker API",
+  "type": "collection",
+  "version": "1",
+  "files": [
+    "collections/transittrack/collection.bru",
+    "collections/transittrack/health/get-message.bru",
+    "collections/transittrack/health/get-random.bru",
+    "collections/transittrack/metadata/get-agencies.bru",
+    "collections/transittrack/metadata/get-agency-feeds.bru",
+    "collections/transittrack/gtfs-static/post-fetch.bru",
+    "collections/transittrack/gtfs-static/get-versions.bru",
+    "collections/transittrack/gtfs-static/get-version-at.bru",
+    "collections/transittrack/gtfs-static/get-export.bru",
+    "collections/transittrack/ingest/post-run.bru",
+    "collections/transittrack/exports/get-snapshots.bru"
+  ],
+  "environments": [
+    "environments/localhost.bru",
+    "environments/staging.bru",
+    "environments/production.bru"
+  ]
+}

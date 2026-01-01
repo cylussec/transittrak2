@@ -7,12 +7,25 @@
 		"dev": "wrangler dev",
 		"start": "wrangler dev",
 		"test": "vitest run",
-		"cf-typegen": "wrangler types"
+		"cf-typegen": "wrangler types",
+		"db:check": "drizzle-kit check --config drizzle.config.ts",
+		"db:generate": "drizzle-kit generate --config drizzle.config.ts",
+		"db:migrate": "wrangler d1 migrations apply transittrack --remote",
+		"db:migrate:staging": "wrangler --env staging d1 migrations apply transittrack-staging --remote",
+		"db:migrate:local": "wrangler d1 migrations apply transittrack --local --persist-to .wrangler/state",
+		"db:seed": "wrangler d1 execute transittrack --file ./db/seed.sql --remote",
+		"db:seed:staging": "wrangler --env staging d1 execute transittrack-staging --file ./db/seed.sql --remote",
+		"db:seed:local": "wrangler d1 execute transittrack --file ./db/seed.sql --local --persist-to .wrangler/state"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.8.19",
+		"drizzle-kit": "^0.31.8",
 		"typescript": "^5.5.2",
 		"vitest": "~3.2.0",
 		"wrangler": "^4.56.0"
+	},
+	"dependencies": {
+		"drizzle-orm": "^0.45.1",
+		"hono": "^4.11.1"
 	}
 }
