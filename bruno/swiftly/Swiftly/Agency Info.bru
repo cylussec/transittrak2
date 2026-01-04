@@ -1,0 +1,21 @@
+meta {
+  name: Agency Info
+  type: http
+  seq: 1
+}
+
+get {
+  url: https://api.goswift.ly/info/mta-maryland
+  body: none
+  auth: inherit
+}
+
+headers {
+  Accept: application/json
+  Authorization: {{BEARER_TOKEN}}
+}
+
+settings {
+  encodeUrl: false
+  timeout: 0
+}
