@@ -14,12 +14,18 @@
 		// The path to the directory containing the `index.html` file to be served at `/`
 		"directory": "./site"
 	},
+	"triggers": {
+		"crons": ["* * * * *"]
+	},
 	"observability": {
 		"enabled": true
 	},
 	"env": {
 		"staging": {
 			"name": "transittrack-worker-staging",
+			"triggers": {
+				"crons": ["* * * * *"]
+			},
 			"vars": {
 				"ENVIRONMENT": "staging",
 				"SWIFTLY_API_KEY": "test"
