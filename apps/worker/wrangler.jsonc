@@ -41,12 +41,6 @@
 			"migrations": [
 				{
 					"tag": "v1",
-					"new_classes": [
-						"IngestCoordinator"
-					]
-				},
-				{
-					"tag": "v2",
 					"new_sqlite_classes": [
 						"IngestCoordinator"
 					]
@@ -90,12 +84,6 @@
 	"migrations": [
 		{
 			"tag": "v1",
-			"new_classes": [
-				"IngestCoordinator"
-			]
-		},
-		{
-			"tag": "v2",
 			"new_sqlite_classes": [
 				"IngestCoordinator"
 			]
