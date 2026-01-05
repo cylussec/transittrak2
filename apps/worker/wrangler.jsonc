@@ -44,6 +44,12 @@
 					"new_classes": [
 						"IngestCoordinator"
 					]
+				},
+				{
+					"tag": "v2",
+					"new_sqlite_classes": [
+						"IngestCoordinator"
+					]
 				}
 			],
 			"d1_databases": [
@@ -85,6 +91,12 @@
 		{
 			"tag": "v1",
 			"new_classes": [
+				"IngestCoordinator"
+			]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": [
 				"IngestCoordinator"
 			]
 		}
