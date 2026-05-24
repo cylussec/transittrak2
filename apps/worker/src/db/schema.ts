@@ -109,3 +109,109 @@ export const tuStopTimeUpdates = sqliteTable(
 		agencyTripTsIdx: index('idx_tu_updates_agency_trip_ts').on(table.agencyId, table.tripId, table.tsMs),
 	})
 );
+
+export const gtfsRoutes = sqliteTable(
+	'gtfs_routes',
+	{
+		routeId: text('route_id').notNull(),
+		agencyId: text('agency_id').notNull(),
+		gtfsVersionId: text('gtfs_version_id').notNull(),
+		routeShortName: text('route_short_name'),
+		routeLongName: text('route_long_name'),
+		routeDesc: text('route_desc'),
+		routeType: integer('route_type').notNull(),
+		routeUrl: text('route_url'),
+		routeColor: text('route_color'),
+		routeTextColor: text('route_text_color'),
+		routeSortOrder: integer('route_sort_order'),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.routeId, table.agencyId, table.gtfsVersionId] }),
+		agencyVersionIdx: index('idx_gtfs_routes_agency_version').on(table.agencyId, table.gtfsVersionId),
+	})
+);
+
+export const gtfsStops = sqliteTable(
+	'gtfs_stops',
+	{
+		stopId: text('stop_id').notNull(),
+		agencyId: text('agency_id').notNull(),
+		gtfsVersionId: text('gtfs_version_id').notNull(),
+		stopCode: text('stop_code'),
+		stopName: text('stop_name').notNull(),
+		stopDesc: text('stop_desc'),
+		stopLat: real('stop_lat').notNull(),
+		stopLon: real('stop_lon').notNull(),
+		zoneId: text('zone_id'),
+		stopUrl: text('stop_url'),
+		locationType: integer('location_type'),
+		parentStation: text('parent_station'),
+		stopTimezone: text('stop_timezone'),
+		wheelchairBoarding: integer('wheelchair_boarding'),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.stopId, table.agencyId, table.gtfsVersionId] }),
+		agencyVersionIdx: index('idx_gtfs_stops_agency_version').on(table.agencyId, table.gtfsVersionId),
+	})
+);
+
+export const gtfsShapes = sqliteTable(
+	'gtfs_shapes',
+	{
+		shapeId: text('shape_id').notNull(),
+		agencyId: text('agency_id').notNull(),
+		gtfsVersionId: text('gtfs_version_id').notNull(),
+		shapePtLat: real('shape_pt_lat').notNull(),
+		shapePtLon: real('shape_pt_lon').notNull(),
+		shapePtSequence: integer('shape_pt_sequence').notNull(),
+		shapeDistTraveled: real('shape_dist_traveled'),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.shapeId, table.agencyId, table.gtfsVersionId, table.shapePtSequence] }),
+		agencyVersionShapeIdx: index('idx_gtfs_shapes_agency_version_shape').on(table.agencyId, table.gtfsVersionId, table.shapeId),
+	})
+);
+
+export const gtfsTrips = sqliteTable(
+	'gtfs_trips',
+	{
+		tripId: text('trip_id').notNull(),
+		agencyId: text('agency_id').notNull(),
+		gtfsVersionId: text('gtfs_version_id').notNull(),
+		routeId: text('route_id').notNull(),
+		serviceId: text('service_id').notNull(),
+		tripHeadsign: text('trip_headsign'),
+		tripShortName: text('trip_short_name'),
+		directionId: integer('direction_id'),
+		blockId: text('block_id'),
+		shapeId: text('shape_id'),
+		wheelchairAccessible: integer('wheelchair_accessible'),
+		bikesAllowed: integer('bikes_allowed'),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.tripId, table.agencyId, table.gtfsVersionId] }),
+		agencyVersionRouteIdx: index('idx_gtfs_trips_agency_version_route').on(table.agencyId, table.gtfsVersionId, table.routeId),
+	})
+);
+
+export const gtfsStopTimes = sqliteTable(
+	'gtfs_stop_times',
+	{
+		tripId: text('trip_id').notNull(),
+		agencyId: text('agency_id').notNull(),
+		gtfsVersionId: text('gtfs_version_id').notNull(),
+		arrivalTime: text('arrival_time'),
+		departureTime: text('departure_time'),
+		stopId: text('stop_id').notNull(),
+		stopSequence: integer('stop_sequence').notNull(),
+		stopHeadsign: text('stop_headsign'),
+		pickupType: integer('pickup_type'),
+		dropOffType: integer('drop_off_type'),
+		shapeDistTraveled: real('shape_dist_traveled'),
+		timepoint: integer('timepoint'),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.tripId, table.agencyId, table.gtfsVersionId, table.stopSequence] }),
+		agencyVersionTripIdx: index('idx_gtfs_stop_times_agency_version_trip').on(table.agencyId, table.gtfsVersionId, table.tripId),
+	})
+);

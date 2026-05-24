@@ -1,0 +1,18 @@
+{
+  "fields": [
+    { "name": "agency_id", "type": "string", "required": true },
+    { "name": "ts_ms", "type": "int64", "required": true },
+    { "name": "vehicle_id", "type": "string", "required": true },
+    { "name": "trip_id", "type": "string", "required": false },
+    { "name": "route_id", "type": "string", "required": false },
+    { "name": "direction_id", "type": "int32", "required": false },
+    { "name": "stop_id", "type": "string", "required": false },
+    { "name": "lat", "type": "float64", "required": true },
+    { "name": "lon", "type": "float64", "required": true },
+    { "name": "bearing", "type": "float64", "required": false },
+    { "name": "speed", "type": "float64", "required": false },
+    { "name": "current_status", "type": "string", "required": false },
+    { "name": "current_stop_sequence", "type": "int32", "required": false },
+    { "name": "gtfs_version_id", "type": "string", "required": true }
+  ]
+}

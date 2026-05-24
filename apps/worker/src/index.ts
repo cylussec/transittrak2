@@ -1,5 +1,9 @@
 import { Hono } from 'hono';
 import { registerRoutes } from './routes';
+import { handleParseQueue, type ParseJob } from './queues/parse-queue';
+import { fetchGtfsStatic } from './gtfs-static/fetch';
+import { parseAndStoreGtfsStatic } from './gtfs-static/parsers';
+import { cleanupD1HotCache } from './cleanup/retention';
 
 /**
  * Welcome to Cloudflare Workers! This is your first worker.
@@ -50,9 +54,12 @@ export default {
 
 		return response;
 	},
-	async scheduled(_controller, env, ctx): Promise<void> {
+	async scheduled(controller, env, ctx): Promise<void> {
 		if (!env.DB) return;
 		if (!env.INGEST_COORDINATOR) return;
+
+		const currentHour = new Date().getUTCHours();
+		const isDailySchedule = controller.cron === '0 2 * * *' || currentHour === 2;
 
 		try {
 			const agencies = await env.DB.prepare('SELECT agency_id FROM agencies WHERE enabled = 1 ORDER BY agency_id').all();
@@ -71,10 +78,32 @@ export default {
 						body: JSON.stringify({ agency_id: agencyId }),
 					})
 				);
+
+				if (isDailySchedule && env.GTFS_STATIC_COORDINATOR) {
+					const staticId = env.GTFS_STATIC_COORDINATOR.idFromName(agencyId);
+					const staticStub = env.GTFS_STATIC_COORDINATOR.get(staticId);
+					ctx.waitUntil(
+						staticStub.fetch('https://do/do/gtfs-static/fetch', {
+							method: 'POST',
+							headers: {
+								'content-type': 'application/json; charset=utf-8',
+							},
+							body: JSON.stringify({ agency_id: agencyId }),
+						})
+					);
+				}
+			}
+
+			// Run D1 size-based cleanup once per day at 2am UTC
+			if (isDailySchedule) {
+				ctx.waitUntil(cleanupD1HotCache(env));
 			}
 		} catch {
 			return;
 		}
+	},
+	async queue(batch, env): Promise<void> {
+		await handleParseQueue(batch as MessageBatch<ParseJob>, env);
 	},
 } satisfies ExportedHandler<Env>;
 
@@ -129,8 +158,7 @@ export class IngestCoordinator {
 
 				const resp = await fetch(feed.url, {
 					headers: {
-						Authorization: `Bearer ${this.env.SWIFTLY_API_KEY}`,
-						'x-api-key': this.env.SWIFTLY_API_KEY,
+						Authorization: this.env.SWIFTLY_API_KEY || '',
 					},
 				});
 
@@ -151,19 +179,34 @@ export class IngestCoordinator {
 					},
 				});
 
-				await this.env.DB.prepare(
-					'INSERT OR IGNORE INTO gtfsrt_snapshots (snapshot_id, agency_id, feed_type, ts_ms, gtfs_version_id, r2_key, byte_size, http_etag, http_last_modified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-				).bind(
-					snapshotId,
-					agencyId,
-					feedType,
-					tsMs,
-					gtfsVersionId,
-					r2Key,
-					bytes.byteLength,
-					resp.headers.get('etag'),
-					resp.headers.get('last-modified')
-				).run();
+				try {
+					await this.env.DB.prepare(
+						'INSERT OR IGNORE INTO gtfsrt_snapshots (snapshot_id, agency_id, feed_type, ts_ms, gtfs_version_id, r2_key, byte_size, http_etag, http_last_modified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+					).bind(
+						snapshotId,
+						agencyId,
+						feedType,
+						tsMs,
+						gtfsVersionId,
+						r2Key,
+						bytes.byteLength,
+						resp.headers.get('etag'),
+						resp.headers.get('last-modified')
+					).run();
+				} catch (d1Error) {
+					console.error(` D1 snapshot insert failed (data safe in R2): ${d1Error}`);
+				}
+
+				if (this.env.PARSE_QUEUE && gtfsVersionId) {
+					await this.env.PARSE_QUEUE.send({
+						snapshotId,
+						agencyId,
+						feedType,
+						r2Key,
+						gtfsVersionId,
+						tsMs,
+					} satisfies ParseJob);
+				}
 
 				results.push({ feed_type: feedType, status: 200, snapshot_id: snapshotId, r2_key: r2Key });
 			}
@@ -174,6 +217,86 @@ export class IngestCoordinator {
 					'content-type': 'application/json; charset=utf-8',
 				},
 			});
+		}
+
+		return new Response('Not Found', { status: 404 });
+	}
+}
+
+export class GtfsStaticCoordinator {
+	private readonly state: DurableObjectState;
+	private readonly env: Env;
+
+	constructor(state: DurableObjectState, env: Env) {
+		this.state = state;
+		this.env = env;
+	}
+
+	async fetch(request: Request): Promise<Response> {
+		const url = new URL(request.url);
+
+		if (request.method === 'POST' && url.pathname === '/do/gtfs-static/fetch') {
+			if (!this.env.DB) return new Response('D1 not configured', { status: 501 });
+			if (!this.env.ARCHIVE_BUCKET) return new Response('R2 not configured', { status: 501 });
+
+			const json = (await request.json().catch(() => null)) as null | { agency_id?: unknown };
+			const agencyId = typeof json?.agency_id === 'string' ? json.agency_id : null;
+			if (!agencyId) return new Response('Invalid agency_id', { status: 400 });
+
+			const agency = await this.env.DB.prepare(
+				'SELECT agency_id, gtfs_static_url FROM agencies WHERE agency_id = ?'
+			)
+				.bind(agencyId)
+				.first<{ agency_id: string; gtfs_static_url: string }>();
+
+			if (!agency) {
+				return new Response(JSON.stringify({ error: 'Agency not found' }), {
+					status: 404,
+					headers: { 'content-type': 'application/json' },
+				});
+			}
+
+			const result = await fetchGtfsStatic(agencyId, agency.gtfs_static_url, this.env);
+
+			if (!result) {
+				return new Response(
+					JSON.stringify({ ok: false, message: 'No new GTFS version or fetch failed' }),
+					{
+						status: 200,
+						headers: { 'content-type': 'application/json' },
+					}
+				);
+			}
+
+			try {
+				await parseAndStoreGtfsStatic(agencyId, result.gtfsVersionId, result.r2Key, this.env);
+			} catch (parseError) {
+				console.error(`❌ GTFS static parse failed:`, parseError);
+				return new Response(
+					JSON.stringify({
+						ok: false,
+						error: String(parseError),
+						gtfs_version_id: result.gtfsVersionId,
+					}),
+					{
+						status: 500,
+						headers: { 'content-type': 'application/json' },
+					}
+				);
+			}
+
+			return new Response(
+				JSON.stringify({
+					ok: true,
+					gtfs_version_id: result.gtfsVersionId,
+					r2_key: result.r2Key,
+					fetched_at_ms: result.fetchedAtMs,
+				}),
+				{
+					status: 200,
+					headers: { 'content-type': 'application/json' },
+				}
+			);
 		}
 
 		return new Response('Not Found', { status: 404 });

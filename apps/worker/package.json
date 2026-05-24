@@ -19,13 +19,16 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.8.19",
+		"@types/papaparse": "^5.5.2",
 		"drizzle-kit": "^0.31.8",
 		"typescript": "^5.5.2",
 		"vitest": "~3.2.0",
-		"wrangler": "^4.56.0"
+		"wrangler": "^4.67.0"
 	},
 	"dependencies": {
 		"drizzle-orm": "^0.45.1",
-		"hono": "^4.11.1"
+		"hono": "^4.11.1",
+		"papaparse": "^5.5.3",
+		"protobufjs": "^8.0.0"
 	}
 }

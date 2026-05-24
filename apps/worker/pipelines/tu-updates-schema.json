@@ -1,0 +1,14 @@
+{
+  "fields": [
+    { "name": "agency_id", "type": "string", "required": true },
+    { "name": "ts_ms", "type": "int64", "required": true },
+    { "name": "trip_id", "type": "string", "required": true },
+    { "name": "route_id", "type": "string", "required": false },
+    { "name": "stop_id", "type": "string", "required": true },
+    { "name": "stop_sequence", "type": "int32", "required": false },
+    { "name": "arrival_time_ms", "type": "int64", "required": false },
+    { "name": "departure_time_ms", "type": "int64", "required": false },
+    { "name": "schedule_relationship", "type": "string", "required": false },
+    { "name": "gtfs_version_id", "type": "string", "required": true }
+  ]
+}

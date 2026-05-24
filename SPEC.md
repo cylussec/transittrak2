@@ -64,14 +64,13 @@
 
 GitHub repo secrets required:
 
-- [ ] `CLOUDFLARE_API_TOKEN`
-- [ ] `CLOUDFLARE_ACCOUNT_ID`
+- [x] `CLOUDFLARE_API_TOKEN` (requires: D1:Edit, Workers R2 Storage:Edit, Workers Scripts:Edit)
+- [x] `CLOUDFLARE_ACCOUNT_ID`
 
 Manual GitHub setup (Option B):
 
 - [ ] **Enable Actions** (GitHub)
   - [ ] GitHub repo → **Settings** → **Actions** → **General**
-  - [ ] Ensure Actions are allowed to run for this repo
 - [ ] **Add Actions secrets** (GitHub)
   - [ ] GitHub repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
   - [ ] Add `CLOUDFLARE_API_TOKEN`
@@ -109,10 +108,10 @@ For MTA bus (Local Bus):
 
 ### 1.2 Auth
 
-- [ ] Store API key as a Worker secret: `SWIFTLY_API_KEY`
-- [ ] Send both headers on requests:
-  - [ ] `Authorization: Bearer ${SWIFTLY_API_KEY}`
-  - [ ] `x-api-key: ${SWIFTLY_API_KEY}`
+- [x] Store API key as a Worker secret: `SWIFTLY_API_KEY`
+- [x] Send both headers on requests:
+  - [x] `Authorization: Bearer ${SWIFTLY_API_KEY}`
+  - [x] `x-api-key: ${SWIFTLY_API_KEY}`
 
 ### 1.3 Response type
 
@@ -120,37 +119,36 @@ For MTA bus (Local Bus):
 
 ## 2) Cloudflare resources to create
 
-- [ ] **R2 buckets** (Cloudflare Dashboard) — **MANUAL SETUP YOU MUST DO IN CLOUDFLARE UI**
-  - [ ] Create production bucket: `transittrack-archive`
-  - [ ] Create staging bucket: `transittrack-archive-staging`
-  - [ ] Note: `wrangler.jsonc` already expects these names for the `ARCHIVE_BUCKET` binding
-- [ ] **D1 databases** (Cloudflare Dashboard) — **MANUAL SETUP YOU MUST DO IN CLOUDFLARE UI**
-  - [ ] Create production DB: `transittrack`
-  - [ ] Create staging DB: `transittrack-staging`
-  - [ ] Note: we will need to add the D1 `database_id` values to `wrangler.jsonc` later
-  - [ ] After creating DBs, apply schema from repo:
-    - [ ] `npm run -w transittrack-worker db:apply`
-    - [ ] `npm run -w transittrack-worker db:apply:staging`
-  - [ ] Seed initial agencies/feeds:
-    - [ ] `npm run -w transittrack-worker db:seed`
-    - [ ] `npm run -w transittrack-worker db:seed:staging`
+- [x] **R2 buckets** (Cloudflare Dashboard) — **MANUAL SETUP YOU MUST DO IN CLOUDFLARE UI**
+  - [x] Create production bucket: `transittrack-archive`
+  - [x] Create staging bucket: `transittrack-archive-staging`
+  - [x] Note: `wrangler.jsonc` already expects these names for the `ARCHIVE_BUCKET` binding
+- [x] **D1 databases** (Cloudflare Dashboard) — **MANUAL SETUP YOU MUST DO IN CLOUDFLARE UI**
+  - [x] Create production DB: `transittrack`
+  - [x] Create staging DB: `transittrack-staging`
+  - [x] Database IDs added to `wrangler.jsonc`
+  - [x] Schema applied via Drizzle migrations (auto-applied on deploy)
+  - [x] Seed initial agencies/feeds:
+    - [x] Staging: `npm run -w transittrack-worker db:seed:staging`
+    - [ ] Production: `npm run -w transittrack-worker db:seed` (run after first prod deploy)
 - [ ] **Durable Object namespace**
   - [x] Worker config includes DO binding `INGEST_COORDINATOR` → class `IngestCoordinator`
   - [x] Worker config includes migrations for the DO class
-- [ ] **Cron trigger**
-  - [ ] Add a 1-minute cron once ingestion is implemented (avoid enabling it before the pipeline exists)
+- [x] **Cron trigger**
+  - [x] 1-minute cron configured in `wrangler.jsonc` for both staging and production
+  - [x] Triggers are registered on deploy
 - [ ] Optional: Queue (not required for v1)
 
 ## 3) Data you store forever (R2 object layout)
 
-- [ ] Store raw immutable snapshots in R2
+- [x] Store raw immutable snapshots in R2
 
 R2 key format for GTFS-RT snapshots:
 
-- [ ] `gtfsrt/{agency_id}/{feed_type}/year=YYYY/month=MM/day=DD/hour=HH/{ts_ms}.pb`
-  - [ ] `agency_id`: start with `mta-maryland-local-bus`
-  - [ ] `feed_type`: `trip-updates` | `vehicle-positions` | `alerts`
-  - [ ] `ts_ms`: ingestion timestamp (UTC ms)
+- [x] `gtfsrt/{agency_id}/{feed_type}/year=YYYY/month=MM/day=DD/hour=HH/{ts_ms}.pb`
+  - [x] `agency_id`: start with `mta-maryland-local-bus`
+  - [x] `feed_type`: `trip-updates` | `vehicle-positions` | `alerts`
+  - [x] `ts_ms`: ingestion timestamp (UTC ms)
 
 R2 key format for GTFS static zips:
 
@@ -166,48 +164,48 @@ R2 key format for GTFS static zips:
 
 ### 5.1 Agencies + feeds
 
-- [ ] `agencies`
-  - [ ] `agency_id TEXT PRIMARY KEY`
-  - [ ] `display_name TEXT`
-  - [ ] `timezone TEXT` (store UTC)
-  - [ ] `gtfs_static_url TEXT`
-  - [ ] `swiftly_agency_key TEXT`
-  - [ ] `enabled INTEGER`
-- [ ] `feeds`
-  - [ ] `feed_id TEXT PRIMARY KEY`
-  - [ ] `agency_id TEXT`
-  - [ ] `feed_type TEXT`
-  - [ ] `url TEXT`
-  - [ ] `enabled INTEGER`
-  - [ ] Index `(agency_id, feed_type)`
+- [x] `agencies`
+  - [x] `agency_id TEXT PRIMARY KEY`
+  - [x] `display_name TEXT`
+  - [x] `timezone TEXT` (store UTC)
+  - [x] `gtfs_static_url TEXT`
+  - [x] `swiftly_agency_key TEXT`
+  - [x] `enabled INTEGER`
+- [x] `feeds`
+  - [x] `feed_id TEXT PRIMARY KEY`
+  - [x] `agency_id TEXT`
+  - [x] `feed_type TEXT`
+  - [x] `url TEXT`
+  - [x] `enabled INTEGER`
+  - [x] Index `(agency_id, feed_type)`
 
 ### 5.2 Static GTFS versions
 
-- [ ] `gtfs_versions`
-  - [ ] `gtfs_version_id TEXT PRIMARY KEY`
-  - [ ] `agency_id TEXT`
-  - [ ] `fetched_at_ms INTEGER`
-  - [ ] `r2_key TEXT`
-  - [ ] Index `(agency_id, fetched_at_ms)`
-- [ ] `gtfs_version_effective`
-  - [ ] `agency_id TEXT`
-  - [ ] `effective_from_ms INTEGER`
-  - [ ] `gtfs_version_id TEXT`
-  - [ ] Primary key `(agency_id, effective_from_ms)`
+- [x] `gtfs_versions`
+  - [x] `gtfs_version_id TEXT PRIMARY KEY`
+  - [x] `agency_id TEXT`
+  - [x] `fetched_at_ms INTEGER`
+  - [x] `r2_key TEXT`
+  - [x] Index `(agency_id, fetched_at_ms)`
+- [x] `gtfs_version_effective`
+  - [x] `agency_id TEXT`
+  - [x] `effective_from_ms INTEGER`
+  - [x] `gtfs_version_id TEXT`
+  - [x] Primary key `(agency_id, effective_from_ms)`
 
 ### 5.3 Snapshot index
 
-- [ ] `gtfsrt_snapshots`
-  - [ ] `snapshot_id TEXT PRIMARY KEY`
-  - [ ] `agency_id TEXT`
-  - [ ] `feed_type TEXT`
-  - [ ] `ts_ms INTEGER`
-  - [ ] `gtfs_version_id TEXT` (nullable for alerts)
-  - [ ] `r2_key TEXT`
-  - [ ] `byte_size INTEGER`
-  - [ ] `http_etag TEXT` (nullable)
-  - [ ] `http_last_modified TEXT` (nullable)
-  - [ ] Index `(agency_id, feed_type, ts_ms)`
+- [x] `gtfsrt_snapshots`
+  - [x] `snapshot_id TEXT PRIMARY KEY`
+  - [x] `agency_id TEXT`
+  - [x] `feed_type TEXT`
+  - [x] `ts_ms INTEGER`
+  - [x] `gtfs_version_id TEXT` (nullable for alerts)
+  - [x] `r2_key TEXT`
+  - [x] `byte_size INTEGER`
+  - [x] `http_etag TEXT` (nullable)
+  - [x] `http_last_modified TEXT` (nullable)
+  - [x] Index `(agency_id, feed_type, ts_ms)`
 
 ### 5.4 Parsed “thin” tables for fast UI (hot cache)
 
@@ -220,35 +218,35 @@ R2 key format for GTFS static zips:
 
 ## 6) Durable Object responsibilities
 
-- [ ] DO class: `IngestCoordinator`
-- [ ] One DO instance per agency (`id = agency_id`)
-- [ ] Prevent overlapping ingests per agency
-- [ ] Store last-success metadata and last error
+- [x] DO class: `IngestCoordinator`
+- [x] One DO instance per agency (`id = agency_id`)
+- [ ] Prevent overlapping ingests per agency (basic implementation exists, can enhance)
+- [ ] Store last-success metadata and last error (not yet implemented)
 
 Endpoints in DO:
 
-- [ ] `POST /do/ingest/run` body `{ agency_id: string }`
+- [x] `POST /do/ingest/run` body `{ agency_id: string }`
 
 ## 7) Ingestion pipeline
 
 ### 7.1 Cron handler
 
-- [ ] On scheduled event: for each enabled agency, call the agency’s DO run
+- [x] On scheduled event: for each enabled agency, call the agency's DO run
 
 ### 7.2 DO run flow
 
 For each enabled feed:
 
-- [ ] Fetch feed with auth headers
-- [ ] `ts_ms = Date.now()` (UTC)
-- [ ] Resolve `gtfs_version_id` (latest effective <= `ts_ms`)
-- [ ] Write raw snapshot to R2
-- [ ] Write snapshot index row to D1
-- [ ] Decode protobuf and write hot-cache rows to D1 (batched inserts)
+- [x] Fetch feed with auth headers
+- [x] `ts_ms = Date.now()` (UTC)
+- [x] Resolve `gtfs_version_id` (latest effective <= `ts_ms`)
+- [x] Write raw snapshot to R2
+- [x] Write snapshot index row to D1
+- [ ] Decode protobuf and write hot-cache rows to D1 (batched inserts) — **NEXT PRIORITY**
 
 Idempotency:
 
-- [ ] Snapshot ID is unique (`agency_id + feed_type + ts_ms`)
+- [x] Snapshot ID is unique (`agency_id + feed_type + ts_ms`)
 
 ## 8) GTFS static fetch + parse pipeline
 
@@ -297,14 +295,15 @@ Idempotency:
 
 ## 12) Milestones (deliverable order)
 
-- [ ] **Milestone A — Infrastructure**
-  - [ ] Bind R2 + D1 + DO
-  - [ ] Add cron trigger
-  - [ ] Add secret `SWIFTLY_API_KEY`
+- [x] **Milestone A — Infrastructure** ✅ COMPLETE
+  - [x] Bind R2 + D1 + DO
+  - [x] Add cron trigger
+  - [x] Add secret `SWIFTLY_API_KEY`
 - [ ] **Milestone B — Static GTFS**
   - [ ] Download + version + parse
-- [ ] **Milestone C — Realtime ingest**
-  - [ ] cron → DO → fetch → R2 → D1 index → parse hot tables
+- [x] **Milestone C — Realtime ingest** (partial: raw archival complete, parsing pending)
+  - [x] cron → DO → fetch → R2 → D1 index
+  - [ ] parse hot tables (`vp_points`, `tu_stop_time_updates`)
 - [ ] **Milestone D — Query APIs**
   - [ ] metadata + stringline
 - [ ] **Milestone E — React UI**

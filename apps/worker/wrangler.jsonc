@@ -15,7 +15,10 @@
 		"directory": "./site"
 	},
 	"triggers": {
-		"crons": ["* * * * *"]
+		"crons": [
+			"* * * * *",
+			"0 2 * * *"
+		] // Run every minute for realtime, and add a daily trigger for future GTFS static scheduling
 	},
 	"observability": {
 		"enabled": true
@@ -24,17 +27,23 @@
 		"staging": {
 			"name": "transittrack-worker-staging",
 			"triggers": {
-				"crons": ["* * * * *"]
+				"crons": [
+					"* * * * *",
+					"0 2 * * *"
+				]
 			},
 			"vars": {
-				"ENVIRONMENT": "staging",
-				"SWIFTLY_API_KEY": "test"
+				"ENVIRONMENT": "staging"
 			},
 			"durable_objects": {
 				"bindings": [
 					{
 						"name": "INGEST_COORDINATOR",
 						"class_name": "IngestCoordinator"
+					},
+					{
+						"name": "GTFS_STATIC_COORDINATOR",
+						"class_name": "GtfsStaticCoordinator"
 					}
 				]
 			},
@@ -43,6 +52,12 @@
 					"tag": "v1",
 					"new_sqlite_classes": [
 						"IngestCoordinator"
+					]
+				},
+				{
+					"tag": "v2",
+					"new_sqlite_classes": [
+						"GtfsStaticCoordinator"
 					]
 				}
 			],
@@ -60,12 +75,36 @@
 					"binding": "ARCHIVE_BUCKET",
 					"bucket_name": "transittrack-archive-staging"
 				}
-			]
+			],
+			"pipelines": [
+				{
+					"pipeline": "dce1076ace7842c093f584a2593e6f5d",
+					"binding": "VP_PIPELINE"
+				},
+				{
+					"pipeline": "0f37aff6d52d4f2880dbeb0c6f9caeb2",
+					"binding": "TU_PIPELINE"
+				}
+			],
+			"queues": {
+				"producers": [
+					{
+						"binding": "PARSE_QUEUE",
+						"queue": "transittrack-parse-queue-staging"
+					}
+				],
+				"consumers": [
+					{
+						"queue": "transittrack-parse-queue-staging",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5
+					}
+				]
+			}
 		}
 	},
 	"vars": {
-		"ENVIRONMENT": "production",
-		"SWIFTLY_API_KEY": "test"
+		"ENVIRONMENT": "production"
 	},
 	"r2_buckets": [
 		{
@@ -78,6 +117,10 @@
 			{
 				"name": "INGEST_COORDINATOR",
 				"class_name": "IngestCoordinator"
+			},
+			{
+				"name": "GTFS_STATIC_COORDINATOR",
+				"class_name": "GtfsStaticCoordinator"
 			}
 		]
 	},
@@ -87,17 +130,48 @@
 			"new_sqlite_classes": [
 				"IngestCoordinator"
 			]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": [
+				"GtfsStaticCoordinator"
+			]
 		}
 	],
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "transittrack",
-			"database_id": "ae15e133-c80f-41b9-a9d8-06a2abe1bc38",
+			"database_id": "6699a326-360c-482f-9aec-f8dfc30093c8",
 			"migrations_dir": "migrations",
 			"migrations_table": "d1_migrations"
 		}
-	]
+	],
+	"pipelines": [
+		{
+			"pipeline": "dce1076ace7842c093f584a2593e6f5d",
+			"binding": "VP_PIPELINE"
+		},
+		{
+			"pipeline": "0f37aff6d52d4f2880dbeb0c6f9caeb2",
+			"binding": "TU_PIPELINE"
+		}
+	],
+	"queues": {
+		"producers": [
+			{
+				"binding": "PARSE_QUEUE",
+				"queue": "transittrack-parse-queue"
+			}
+		],
+		"consumers": [
+			{
+				"queue": "transittrack-parse-queue",
+				"max_batch_size": 10,
+				"max_batch_timeout": 5
+			}
+		]
+	}
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

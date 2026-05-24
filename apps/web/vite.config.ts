@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -50,7 +51,7 @@ function cleanViteCacheWithRetry(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [cleanOutDirWithRetry(), cleanViteCacheWithRetry(), react()],
+  plugins: [cleanOutDirWithRetry(), cleanViteCacheWithRetry(), tailwindcss(), react()],
   base: '/',
   build: {
     outDir: '../worker/site',
