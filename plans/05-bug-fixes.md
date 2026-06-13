@@ -5,16 +5,27 @@ Four reported bugs. Each is scoped to a minimal upstream fix.
 ## Decisions Locked (2026-05-24)
 
 - **Bug 1 symptom confirmed**: page shows the literal "No stats yet — data
-  accumulates over time" message. So the API is reachable and returns an
-  empty `stats` array. Investigation must confirm whether
-  `tu_stop_time_updates` is empty or just has NULL `route_id`.
+  accumulates over time" message. The frontend renders that text only when
+  `byRoute.stats.length === 0` (`apps/web/src/components/StatsView.tsx:38-39`),
+  which means the SQL `GROUP BY route_id` returns zero rows. Even an
+  all-NULL-`route_id` table would produce one row, so the symptom rules out
+  the "NULL route_id" hypothesis as a sole cause. The two remaining
+  hypotheses are (a) `tu_stop_time_updates` is genuinely empty for the
+  agency, and (b) **the bound `agency_id` doesn't match what the parser
+  writes** (the route hard-codes `'mta-maryland'` as default —
+  `apps/worker/src/routes/analysis.ts:378`).
 - **Bug 3 confirmed at API layer**: ALL y-axis labels are stop IDs even when
   the corresponding `gtfs_stops.stop_name` exists. This is a backend-side
-  join failure, not a frontend fallback edge case. The fix focuses on
-  `analysis.ts` first; the frontend changes (truncation, dim styling) are
-  follow-ups.
-- **Execution order**: Bug 4 (1-line SQL) → Bug 2 (layout, blocks visual
-  inspection) → Bug 3 (API stop-name join) → Bug 1 (paired with plan 01
+  join failure, not a frontend fallback edge case. Fix is to fold the
+  lookup into the originating SQL as a `LEFT JOIN gtfs_stops` instead of a
+  second `IN (...)` query, eliminating the silent `try/catch` and the D1
+  parameter cap entirely.
+- **Bug 4 fix uses SQLite bare-column MAX**, not correlated subqueries.
+  D1 is on a SQLite version that returns the row at MAX/MIN when other
+  columns are bare in `GROUP BY`; one index scan replaces the proposed
+  per-vehicle subqueries.
+- **Execution order**: Bug 4 (1 SQL change) → Bug 2 (layout, blocks visual
+  inspection) → Bug 3 (API stop-name JOIN) → Bug 1 (paired with plan 01
   diagnostic endpoint).
 
 ---
@@ -53,35 +64,57 @@ WHERE agency_id = ?
 GROUP BY route_id
 ```
 
-Two plausible causes:
+The frontend message only fires when `byRoute.stats.length === 0`
+(`apps/web/src/components/StatsView.tsx:38-39`). `GROUP BY route_id` against a
+non-empty table always returns at least one row (NULL forms its own group),
+so *the table or the agency filter is genuinely returning zero rows*.
 
-1. **`route_id` is NULL in every row** because the parser doesn't pull it
-   from `TripDescriptor.route_id`. Then `GROUP BY route_id` returns one row
-   with `route_id = NULL` — which the UI maps to a blank table cell, not a
-   "no rows" state… but the user perceives it as empty.
+Likely causes, in priority order:
+
+1. **`agency_id` mismatch** between the API default (`'mta-maryland'`,
+   `apps/worker/src/routes/analysis.ts:378`) and what the parser actually
+   writes. This is the most likely cause given how often `agency_id` is
+   hard-coded across the analysis routes. Verify with
+   `SELECT DISTINCT agency_id, COUNT(*) FROM tu_stop_time_updates GROUP BY 1`.
 2. **`tu_stop_time_updates` is genuinely empty** because trip-update parsing
    is silently failing. Check the parser output in
    `apps/worker/src/queues/parse-queue.ts:77-115`.
+3. **`route_id` populated but always NULL** is *not* the cause of the
+   observed symptom (it would produce one NULL-group row, not zero rows),
+   but is still worth fixing for clean per-route reporting once the
+   primary bug is unblocked. Confirm by querying
+   `SELECT COUNT(*), COUNT(route_id) FROM tu_stop_time_updates`.
 
 ### Plan
 
-1. Add a worker route `GET /api/admin/table-stats` returning `COUNT(*)` per
-   D1 table; visit it in the browser to confirm whether
-   `tu_stop_time_updates` has data and how many rows have `route_id IS NULL`.
-2. If null `route_id`: fix the parser to copy `TripDescriptor.route_id` into
-   the row (and backfill via the new admin endpoint).
-3. If empty table: inspect a `.pb` snapshot from R2 directly via
-   `apps/worker/src/routes/exports.ts` and re-run the parser locally with the
-   existing Vitest setup (`apps/worker/test/`).
-4. UX safety net: in `StatsView.tsx`, distinguish three states explicitly —
-   *loading*, *zero rows*, *rows but route_id NULL* — and render a useful
-   message in each.
+1. Add a worker route `GET /api/admin/table-stats` returning per-table
+   `COUNT(*)` AND `COUNT(*) GROUP BY agency_id` AND
+   `COUNT(route_id) / COUNT(*)` so we can disambiguate all three hypotheses
+   in a single page visit. Auth via the `X-Admin-Token` header introduced
+   in plan 01 step 3.
+2. **If agency_id mismatch** (most likely): pick whichever fix is correct
+   for the deployment — either rename the seeded `agencies.agency_id`, or
+   change the API default. Then thread an explicit agency selection through
+   the UI as part of plan 02 Layer F follow-up.
+3. **If null `route_id`**: fix the parser to copy `TripDescriptor.route_id`
+   into the row and backfill via the admin endpoint.
+4. **If empty table**: inspect a `.pb` snapshot from R2 via
+   `apps/worker/src/routes/exports.ts` and re-run the parser locally with
+   the existing Vitest setup (`apps/worker/test/`).
+5. UX safety net: in `StatsView.tsx`, distinguish four states explicitly —
+   *loading*, *zero rows for this agency*, *rows but route_id NULL*,
+   *rows present* — and render a useful message in each.
+6. Tests: `/api/admin/table-stats` snapshot test; `StatsView` render test
+   per state.
 
 ### Acceptance
 
-- [ ] `byRoute.stats` returns non-NULL route_ids in production.
+- [ ] `byRoute.stats` returns non-NULL route_ids in production for the
+      currently-bound `agency_id`.
 - [ ] StatsView shows the route table for the default agency on first load
       without requiring a route to be selected.
+- [ ] `/api/admin/table-stats` exposes per-agency row counts so this class
+      of bug is diagnosable in <30 seconds in the future.
 
 ---
 
@@ -126,12 +159,20 @@ the apparent SVG width on first paint.
    the SVG be `width="100%"`-style via the existing `width` state — and
    ensure `state.width` is **always** at least `containerRef.current.clientWidth`
    on each mount.
-2. Confirm by adding a temporary border on `<main>` and on the chart container
-   to verify expansion; remove before commit.
-3. Same fix applies to `StatsView.tsx` `BarChart` — its `width` is read once
+2. Read the initial container width in a `useLayoutEffect` (not `useEffect`)
+   so it's available on the first paint, then keep a `ResizeObserver` for
+   subsequent resizes. The current symptom is partly driven by
+   `state.width` defaulting to `800` and only being corrected after the
+   first paint cycle.
+3. Confirm by adding a temporary border on `<main>` and on the chart
+   container to verify expansion; remove before commit.
+4. Same fix applies to `StatsView.tsx` `BarChart` — its `width` is read once
    at effect time from `getBoundingClientRect()` and never updated on
-   resize. Add a `ResizeObserver` there too (extract a `useContainerWidth`
-   hook so both charts share the logic).
+   resize. Add a `ResizeObserver` there too. Extract a shared
+   `useContainerWidth` hook (`apps/web/src/hooks/useContainerWidth.ts`) so
+   both charts share the logic.
+5. Tests: React Testing Library + a mocked `ResizeObserver` to verify the
+   hook returns the container width on initial mount.
 
 ### Acceptance
 
@@ -184,27 +225,56 @@ it would yield ~672 ticks.
 
 ### Plan
 
-**Y axis (names) — do all of these:**
+**Y axis (names) — the right fix is to JOIN, not chunk `IN()`:**
+
+The current code runs the data query first, collects stop_ids, then runs a
+separate `WHERE stop_id IN (?,?,?…)` lookup wrapped in a silent `catch {}`
+(`apps/worker/src/routes/analysis.ts:240-257` and
+`apps/worker/src/routes/analysis.ts:342-357`). The clean fix is to
+**fold `gtfs_stops` into the originating query** and drop the second
+statement entirely:
+
+```sql
+-- getStringlineData (route)
+SELECT vp.vehicle_id, vp.ts_ms, vp.stop_id, s.stop_name,
+       vp.current_stop_sequence, vp.lat, vp.lon,
+       vp.current_status, vp.direction_id
+FROM vp_points vp
+LEFT JOIN gtfs_stops s
+  ON s.agency_id = vp.agency_id AND s.stop_id = vp.stop_id
+WHERE vp.route_id = ? AND vp.agency_id = ?
+  AND vp.ts_ms BETWEEN ? AND ?
+  [AND vp.direction_id = ?]
+ORDER BY vp.vehicle_id, vp.ts_ms
+LIMIT 10000
+```
+
+This eliminates:
+
+- The silent `try/catch` swallowing errors.
+- The D1 SQL-parameter cap (~100 placeholders) issue.
+- A round-trip and the `Map<stop_id, stop_name>` plumbing.
+- The conditional "only do the lookup if `stopOrder.length > 0`" branch.
+
+Apply the same JOIN to `getRouteStops` and `getVehicleStringline`.
+
+**Supporting steps:**
 
 1. **Diagnose first**. As part of the Bug 1 admin endpoint, return
-   `gtfs_stops` row counts grouped by `agency_id`. Confirm whether the
+   `gtfs_stops` row counts grouped by `agency_id`. Confirms whether the
    table is populated for the relevant agency at all.
-2. **Stop swallowing the error**. In `analysis.ts` (both
-   `getStringlineData:240-256` and `getRouteStops:177-193`), remove the
-   silent `catch {}`. Log to the console and add a `_stop_name_lookup_error`
-   field on the response so the issue is visible during dev.
-3. **Fix the IN()-batching**. Chunk the lookup into groups of ≤90 stop_ids
-   per query (D1 SQL parameter cap). Merge results into the same
-   `stopNames` map.
-4. **Confirm the agency_id**. Run a quick D1 audit (e.g. `SELECT DISTINCT
-   agency_id FROM gtfs_stops`) and reconcile against what `getStringlineData`
-   binds. Normalize at the source if there's a mismatch.
-5. **If `gtfs_stops` is genuinely empty**, that's a pre-existing milestone
-   gap (GTFS-static parsing); file a follow-up but ship the lookup fix so
+2. **Confirm the agency_id**. Run a quick D1 audit (e.g. `SELECT DISTINCT
+   agency_id FROM gtfs_stops`) and reconcile against what the analysis
+   routes bind. Normalize at the source if there's a mismatch — same
+   underlying issue as Bug 1's hypothesis #1.
+3. **If `gtfs_stops` is genuinely empty**, that's a pre-existing milestone
+   gap (GTFS-static parsing); file a follow-up but ship the JOIN fix so
    it works the moment static data lands.
-6. **Frontend dim-fallback**: when the API genuinely returns `stop_name ===
-   stop_id`, render the label muted so the user can spot it. Low priority
-   compared to fixing the API.
+4. **Frontend dim-fallback**: when the API genuinely returns `stop_name ===
+   stop_id` (or NULL via the LEFT JOIN), render the label muted so the user
+   can spot it. Low priority compared to fixing the API.
+5. Tests: vitest snapshot of the JOIN-based response on a fixture where
+   half the stops have names and half don't.
 
 **X axis (ticks):**
 
@@ -233,6 +303,10 @@ use `tickValues` to skip every other label at narrow widths.
       static loaded.
 - [ ] X-axis ticks are readable for 1h, 6h, 24h, and (post plan 03) 7-day
       ranges.
+- [ ] No silent `catch {}` remains around the stop-name lookup; the
+      response either has names or has a documented null fallback.
+- [ ] Tests: snapshot test for the JOIN response shape; visual regression
+      test for x-axis tick density at three ranges.
 
 ---
 
@@ -260,34 +334,33 @@ routes during the window, appears multiple times.
 
 ### Plan
 
-Replace the SQL with one row per `vehicle_id`, keeping the most-recent
-`route_id` / `direction_id`:
+Use SQLite's **bare-column MAX/MIN** behavior: when a query has
+`MAX(col_x)` and other columns are bare in `GROUP BY`, SQLite returns the
+values of those bare columns *from the row that produced the MAX*
+([SQLite docs, since 3.7.11](https://www.sqlite.org/lang_select.html#bareagg)).
+D1 is on a SQLite version that supports this. The fix is one query, one
+index scan over the existing `idx_vp_points_agency_vehicle_ts`
+(`apps/worker/migrations/0000_init.sql:80`):
 
 ```sql
 SELECT vehicle_id,
-       (SELECT route_id      FROM vp_points p2
-          WHERE p2.agency_id = vp.agency_id
-            AND p2.vehicle_id = vp.vehicle_id
-            AND p2.ts_ms >= ?
-          ORDER BY p2.ts_ms DESC LIMIT 1) AS route_id,
-       (SELECT direction_id  FROM vp_points p2
-          WHERE p2.agency_id = vp.agency_id
-            AND p2.vehicle_id = vp.vehicle_id
-            AND p2.ts_ms >= ?
-          ORDER BY p2.ts_ms DESC LIMIT 1) AS direction_id,
+       route_id,
+       direction_id,
        MAX(ts_ms) AS last_seen_ms
-FROM vp_points vp
+FROM vp_points
 WHERE agency_id = ? AND ts_ms >= ?
 GROUP BY vehicle_id
 ORDER BY last_seen_ms DESC
 LIMIT 5000
 ```
 
-(Or simpler if SQLite cooperates: `GROUP BY vehicle_id` with a window function
-fallback.)
+No correlated subqueries, no window functions, no DISTINCT-tuple bug.
 
 Surface `last_seen_ms` in the dropdown label
 (`Vehicle 1234 — Route 22 (8m ago)`) so the user can spot stale entries.
+
+Tests: vitest fixture with a vehicle that runs both directions in the
+window; assert the result row shows the most recent direction.
 
 ### Acceptance
 

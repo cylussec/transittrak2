@@ -47,7 +47,7 @@ type TimeRange =
 interface Props {
   value: TimeRange
   onChange: (next: TimeRange) => void
-  agencyTimezone: string   // for label rendering
+  agencyTimezone: string   // for label rendering AND input ↔ ms conversion
 }
 ```
 
@@ -57,8 +57,39 @@ UI shape:
   single `Custom…` pill at the end.
 - Clicking `Custom…` reveals two `<input type="datetime-local">` controls
   plus a timezone label showing "agency time (e.g. America/New_York)".
-- All custom inputs are interpreted in agency-local time, then converted to
-  UTC `since_ms` / `until_ms` for the API call.
+
+#### 1a. Browser-tz ↔ agency-tz conversion (important)
+
+`<input type="datetime-local">` reads/writes wall-clock time in the **browser's**
+local time zone, not the agency's. If a user in PT picks `2026-08-01 06:00`
+for an ET agency, the API must receive 06:00 ET (= 10:00 UTC), not 06:00 PT
+(= 13:00 UTC). The `TimeRangePicker` is responsible for this conversion:
+
+```ts
+// agency wall-clock 'YYYY-MM-DDTHH:mm' string → epoch ms
+function localToMs(local: string, tz: string): number {
+  // Parse the wall-clock as if it were UTC, then subtract the agency's
+  // UTC offset for THAT instant (DST-correct via Intl).
+  const naiveUtc = Date.parse(local + ':00Z')
+  const offsetMs = getTzOffsetMs(naiveUtc, tz) // via Intl.DateTimeFormat 'longOffset'
+  return naiveUtc - offsetMs
+}
+
+// epoch ms → agency wall-clock 'YYYY-MM-DDTHH:mm' string for the input value
+function msToLocal(ms: number, tz: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date(ms))
+  const get = (t: string) => parts.find(p => p.type === t)!.value
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`
+}
+```
+
+The input value displayed to the user is always agency-local; the value
+persisted to URL state and the API is always UTC ms. Vitest must cover
+DST-boundary days (e.g. picking 02:30 on a spring-forward day collapses to
+03:30 — confirm the code matches user expectation).
 
 ### 2. Push absolute ranges all the way to the API
 
@@ -68,13 +99,33 @@ Update `AnalysisPanel.tsx` to compute and pass both `since_ms` **and**
 
 ### 3. Backend hardening for arbitrary ranges
 
-Long ranges break the implicit `LIMIT 10000`. **Hard-cap and warn** is the
-locked policy:
+Long ranges break the implicit `LIMIT 10000` and risk hitting D1's response
+size limits (~10 MB JSON per request). **Hard-cap and warn** is the locked
+policy, but the cap must be applied per-vehicle so the chart isn't biased.
 
-- Replace the fixed `LIMIT 10000` with an explicit `MAX_ROWS = 50_000`
-  constant.
-- Run the SQL with `LIMIT MAX_ROWS + 1` and detect overflow.
-- Always return a structured envelope:
+Problem with naive `LIMIT N`: today the SQL is
+`ORDER BY vehicle_id, ts_ms LIMIT 10000`
+(`apps/worker/src/routes/analysis.ts:225`). With a 7-day, 50-vehicle range
+and a 50K row cap, you return *all data for the first ~10 vehicles
+alphabetically and zero data for the rest* — the user sees a chart of
+"10 vehicles for 7 days" and assumes the route only had 10 vehicles.
+
+**Fix:** stride sample per vehicle, not lex-truncate.
+
+- Compute a target `STRIDE_S` such that the expected row count fits inside
+  `MAX_ROWS = 50_000`: `STRIDE_S = max(60, ceil(span_s * estimated_vehicles / MAX_ROWS))`.
+  60s is the natural feed cadence; never sample finer than that.
+- Use the modulo trick directly in SQL (works on D1):
+  ```sql
+  SELECT ... FROM vp_points
+  WHERE ... AND ts_ms / 1000 % ? = 0   -- ? = STRIDE_S
+  ORDER BY vehicle_id, ts_ms
+  LIMIT 50001
+  ```
+  This drops to one ping per `STRIDE_S` per vehicle, deterministically and
+  uniformly across all vehicles in the window.
+- Run with `LIMIT MAX_ROWS + 1` and detect overflow. Always return a
+  structured envelope:
   ```json
   {
     "vehicles": { ... },
@@ -82,12 +133,19 @@ locked policy:
     "truncated": true,
     "rows_returned": 50000,
     "max_rows": 50000,
-    "hint": "Range is too wide; narrow it or generate a report"
+    "stride_s": 120,
+    "response_bytes_estimate": 9123456,
+    "hint": "Showing one ping per 120 s; narrow your range or generate a report"
   }
   ```
-- The UI shows a yellow banner above the chart whenever `truncated === true`,
-  with a “Generate report” button that pre-fills the plan-04 form for the
-  same range/route.
+- The UI banner explains the stride ("Sampled at 1 ping / 2 min") so users
+  know the chart is a downsample, not a truncation that drops vehicles.
+  When the per-vehicle stride hits 60s and we still overflow, fall back to
+  truncation with a stronger banner that says exactly which vehicles were
+  dropped.
+
+Also enforce a soft byte cap: estimate ~200 bytes/row and refuse to bind a
+`MAX_ROWS` that would exceed ~8 MB JSON, regardless of the user's request.
 
 ### 4. URL state
 
@@ -111,25 +169,36 @@ backend should:
 ## Implementation Steps
 
 1. Build `TimeRangePicker.tsx` (frontend only, defaults to current
-   relative-pill behavior). [1 PR]
+   relative-pill behavior). Includes the agency-tz conversion helpers from
+   §1a. Tests: vitest for `localToMs` / `msToLocal` round-trips on a DST
+   spring-forward and fall-back day in two different agency timezones. [1 PR]
 2. Plumb `untilMs` through `AnalysisPanel.tsx` and the API calls. [1 PR]
-3. Replace fixed `LIMIT 10000` in `analysis.ts` with window-aware caps + a
-   `truncated` flag in the response. Update `StringlineChart` to surface
-   "Truncated — showing first N points". [1 PR]
+3. Replace fixed `LIMIT 10000` in `analysis.ts` with the per-vehicle stride
+   sampler and a `truncated` / `stride_s` flag in the response. Update
+   `StringlineChart` to surface "Sampled at 1 ping / N min". Tests: a
+   simulated 7-day range with 50 vehicles returns all 50 vehicles in the
+   response (the bias regression test). [1 PR]
 4. Add URL sync via `useUrlState`. [1 PR]
 5. Wire to plan 04 reports for cold ranges. [follow-up]
 
 ## Acceptance Criteria
 
-- [ ] Custom date+time pickers work in both Route and Vehicle tabs.
-- [ ] Picking yesterday's local 00:00 → 23:59 in the Custom… picker
-      produces a chart that contains zero of "today's" data.
-- [ ] A 7-day range returns either complete data (within `MAX_ROWS`) or a
-      `truncated: true` envelope; the UI surfaces a yellow banner with a
-      "Generate report" CTA when truncated.
+- [ ] Custom date+time pickers work in both Route and Vehicle tabs and
+      interpret the user's input in **agency-local** time regardless of the
+      browser's tz.
+- [ ] Picking yesterday's agency-local 00:00 → 23:59 in the Custom… picker
+      produces a chart that contains zero of "today's" data, even when the
+      browser is in a different tz than the agency.
+- [ ] A 7-day range returns either complete data (within `MAX_ROWS`), a
+      uniformly-sampled response (`stride_s > 60`), or a hard-truncated
+      response with an explicit dropped-vehicles banner. The UI never
+      silently drops vehicles.
+- [ ] Response bytes never exceed the soft 8 MB cap.
 - [ ] URL is shareable.
 - [ ] Out-of-hot-cache ranges produce a clean fallback (CTA → report), not
       an empty chart.
+- [ ] Vitest covers DST round-trips in `TimeRangePicker` and the
+      per-vehicle stride sampler in `analysis.ts`.
 
 ## Open Questions
 
