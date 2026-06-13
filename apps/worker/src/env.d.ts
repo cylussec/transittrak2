@@ -15,4 +15,5 @@ interface Env {
 	TU_PIPELINE?: Pipeline;
 	SWIFTLY_API_KEY?: string;
 	ENVIRONMENT?: string;
+	ADMIN_TOKEN?: string;
 }

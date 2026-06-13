@@ -8,6 +8,7 @@ import { registerCleanupRoutes } from './cleanup'
 import { registerBackfillRoutes } from './backfill'
 import { registerVehicleRoutes } from './vehicles'
 import { registerAnalysisRoutes } from './analysis'
+import { registerAdminRoutes } from './admin'
 
 export function registerRoutes(api: Api) {
   registerHealthRoutes(api)
@@ -19,4 +20,5 @@ export function registerRoutes(api: Api) {
   registerBackfillRoutes(api)
   registerVehicleRoutes(api)
   registerAnalysisRoutes(api)
+  registerAdminRoutes(api)
 }

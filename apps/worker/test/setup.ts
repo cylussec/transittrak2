@@ -2,6 +2,8 @@ import { env } from 'cloudflare:test'
 import { beforeAll, vi } from 'vitest'
 
 import migrationSql from '../migrations/0000_init.sql?raw'
+import migration0001Sql from '../migrations/0001_wealthy_mimic.sql?raw'
+import migration0002Sql from '../migrations/0002_ontime_delay.sql?raw'
 import seedSql from '../db/seed.sql?raw'
 
 function splitMigrationStatements(sql: string) {
@@ -34,6 +36,12 @@ async function ensureSchema() {
   if (alreadyInitialized) return
 
   for (const stmt of splitMigrationStatements(migrationSql)) {
+    await runStatement(db, stmt)
+  }
+  for (const stmt of splitMigrationStatements(migration0001Sql)) {
+    await runStatement(db, stmt)
+  }
+  for (const stmt of splitMigrationStatements(migration0002Sql)) {
     await runStatement(db, stmt)
   }
 }
@@ -73,6 +81,7 @@ beforeAll(async () => {
   })
 
   Reflect.set(env as unknown as Record<string, unknown>, 'SWIFTLY_API_KEY', (env as Env).SWIFTLY_API_KEY ?? 'test')
+  Reflect.set(env as unknown as Record<string, unknown>, 'ADMIN_TOKEN', 'test-admin-token')
 
   await ensureSchema()
   await ensureSeeded()

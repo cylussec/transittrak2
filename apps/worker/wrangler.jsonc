@@ -17,8 +17,8 @@
 	"triggers": {
 		"crons": [
 			"* * * * *",
-			"0 2 * * *"
-		] // Run every minute for realtime, and add a daily trigger for future GTFS static scheduling
+			"0 * * * *"
+		] // Run every minute for realtime, and every hour for D1 hot-cache cleanup
 	},
 	"observability": {
 		"enabled": true
@@ -29,7 +29,7 @@
 			"triggers": {
 				"crons": [
 					"* * * * *",
-					"0 2 * * *"
+					"0 * * * *"
 				]
 			},
 			"vars": {

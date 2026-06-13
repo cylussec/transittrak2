@@ -28,6 +28,7 @@ export interface ParsedTripUpdate {
 	departureTimeMs: number | null;
 	scheduleRelationship: string | null;
 	gtfsVersionId: string;
+	startDate: string | null;
 }
 
 export interface ParsedAlert {
@@ -135,6 +136,7 @@ export function parseTripUpdates(
 				departureTimeMs: departureTime,
 				scheduleRelationship,
 				gtfsVersionId,
+				startDate: trip.startDate || null,
 			});
 		}
 	}
